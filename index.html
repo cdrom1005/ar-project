@@ -6,121 +6,119 @@
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
-        #ui-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #111; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10000; }
-        #start-btn { padding: 15px 40px; background: #007AFF; color: white; border: none; border-radius: 30px; font-size: 18px; cursor: pointer; display: none; }
-        .loader { border: 4px solid #333; border-top: 4px solid #007AFF; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        
+        /* 載入與啟動遮罩 */
+        #ui-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #111; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 10000;
+        }
+
+        #start-btn {
+            padding: 15px 40px; background: #007AFF; color: white;
+            border: none; border-radius: 30px; font-size: 18px;
+            cursor: pointer; display: none; /* 初始隱藏 */
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+
+        .loader {
+            border: 4px solid #333; border-top: 4px solid #007AFF;
+            border-radius: 50%; width: 40px; height: 40px;
+            animation: spin 1s linear infinite;
+        }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        #scan-guide { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 250px; height: 250px; border: 2px dashed rgba(255,255,255,0.5); border-radius: 20px; display: none; z-index: 9000; pointer-events: none; }
+
+        /* 掃描引導框 */
+        #scan-guide {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 250px; height: 250px; border: 2px dashed rgba(255,255,255,0.5);
+            border-radius: 20px; display: none; z-index: 9000; pointer-events: none;
+        }
     </style>
 </head>
 <body>
+
     <div id="ui-overlay">
         <div class="loader" id="loader"></div>
-        <p id="status" style="color: white; margin-top: 15px;">資源載入中 (0/7)...</p>
-        <button id="start-btn">開始體驗</button>
+        <p id="status" style="color: white; margin-top: 15px;">資源載入中...</p>
+        <button id="start-btn">開始掃描</button>
     </div>
+
     <div id="scan-guide"></div>
 
-    <a-scene mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiScanning: no; uiLoading: no;" renderer="antialias: true; precision: highp; colorManagement: true;" color-space="sRGB" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
-        <a-assets id="assets-list"></a-assets>
+    <a-scene 
+        mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiScanning: no; uiLoading: no;" 
+        renderer="antialias: true; precision: highp; colorManagement: true;" 
+        color-space="sRGB" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+        
+        <a-assets>
+            <video id="arVideo" src="./your_video.mp4" 
+                   preload="auto" loop="true" crossorigin="anonymous" 
+                   webkit-playsinline playsinline muted>
+            </video>
+        </a-assets>
+
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-        <div id="targets-container"></div>
+
+        <a-entity id="target" mindar-image-target="targetIndex: 0">
+            <a-video id="arVideoEntity" src="#arVideo" width="1" height="1" position="0 0 0"></a-video>
+        </a-entity>
     </a-scene>
 
     <script>
-        const assetContainer = document.querySelector("#assets-list");
-        const targetsContainer = document.querySelector("#targets-container");
+        const video = document.querySelector("#arVideo");
+        const videoEntity = document.querySelector("#arVideoEntity");
         const uiOverlay = document.querySelector("#ui-overlay");
         const startBtn = document.querySelector("#start-btn");
         const statusText = document.querySelector("#status");
         const scanGuide = document.querySelector("#scan-guide");
 
-        const TOTAL = 7;
-        let loadedCount = 0;
-
-        const checkReady = () => {
-            loadedCount++;
-            statusText.innerText = `資源載入中 (${loadedCount}/${TOTAL})...`;
-            if (loadedCount >= TOTAL) {
-                document.getElementById("loader").style.display = "none";
-                statusText.innerText = "準備就緒";
-                startBtn.style.display = "block";
-            }
-        };
-
-        for (let i = 0; i < TOTAL; i++) {
-            const fileId = (i + 1).toString().padStart(2, '0');
-
-            // 1. Video 設定
-            const video = document.createElement('video');
-            video.id = `v-${fileId}`;
-            video.src = `./${fileId}.mp4`; 
-            video.setAttribute('preload', 'auto');
-            video.setAttribute('loop', 'true');
-            video.setAttribute('crossorigin', 'anonymous');
-            video.setAttribute('webkit-playsinline', 'true');
-            video.setAttribute('playsinline', 'true');
-            video.muted = true;
-            assetContainer.appendChild(video);
-
-            // 2. 實體設定
-            const targetEntity = document.createElement('a-entity');
-            targetEntity.setAttribute('mindar-image-target', `targetIndex: ${i}`);
+        // --- 1. 處理影片比例 ---
+        video.addEventListener('loadedmetadata', () => {
+            const aspect = video.videoHeight / video.videoWidth;
+            videoEntity.setAttribute('height', aspect);
             
-            // 🔥 改用 a-plane 並強制設定 shader: flat，這比 a-video 更底層更穩定
-            const videoPlane = document.createElement('a-plane');
-            videoPlane.id = `ent-${fileId}`;
-            // 直接綁定材質 src
-            videoPlane.setAttribute('src', `#v-${fileId}`);
-            videoPlane.setAttribute('width', '1');
-            videoPlane.setAttribute('height', '1');
-            videoPlane.setAttribute('position', '0 0 0'); // 這裡不用刻意 0.1，因為我們用了 transparent: false
-            videoPlane.setAttribute('material', 'shader: flat; transparent: false; alphaTest: 0.5;');
-            
-            targetEntity.appendChild(videoPlane);
-            targetsContainer.appendChild(targetEntity);
+            // 影片元數據就緒，顯示開始按鈕
+            document.getElementById("loader").style.display = "none";
+            statusText.innerText = "準備就緒";
+            startBtn.style.display = "block";
+        });
 
-            // 3. 載入檢查
-            video.addEventListener('loadedmetadata', () => {
-                const aspect = video.videoHeight / video.videoWidth;
-                videoPlane.setAttribute('height', aspect);
-                checkReady();
-            });
-            if (video.readyState >= 1) checkReady();
-
-            // 4. 偵測事件
-            targetEntity.addEventListener("targetFound", () => {
-                console.log(`🎯 發現目標 ${fileId}`);
-                scanGuide.style.display = "none";
-                video.muted = false;
-                
-                // 修正：iOS 必須透過 User Interaction 才能真正 play，這裡做個雙保險
-                const playPromise = video.play();
-                if (playPromise !== undefined) {
-                    playPromise.catch(error => {
-                        console.log("自動播放被阻擋，等待點擊恢復", error);
-                    });
-                }
-            });
-
-            targetEntity.addEventListener("targetLost", () => {
-                console.log(`❌ 遺失目標 ${fileId}`);
-                scanGuide.style.display = "block";
-                video.pause();
-            });
-        }
-
-        // 啟動按鈕
+        // --- 2. 啟動邏輯 ---
         startBtn.addEventListener('click', () => {
-            uiOverlay.style.display = "none";
+            uiOverlay.style.display = "none"; // 移除遮罩，此時相機應該已經在後台啟動
             scanGuide.style.display = "block";
             
-            const allVideos = document.querySelectorAll('video');
-            allVideos.forEach(v => {
-                v.play().then(() => {
-                    v.pause(); // 只是為了取得權限，立刻暫停
-                });
+            // 關鍵：在使用者點擊時「啟動」影片但不播放 (或是播了立刻停)
+            // 這是為了在 iOS 取得播放權限，但確保它不會現在就跑
+            video.play().then(() => {
+                video.pause();
+                video.currentTime = 0; // 重設回開頭
+                console.log("影音權限已解鎖，等待掃描");
             });
+        });
+
+        // --- 3. 掃描偵測邏輯 ---
+        const targetEl = document.querySelector('#target');
+        
+        targetEl.addEventListener("targetFound", () => {
+            console.log("🎯 掃描成功：開始播放");
+            scanGuide.style.display = "none";
+            video.muted = false; // 取消靜音
+            video.play();
+        });
+
+        targetEl.addEventListener("targetLost", () => {
+            console.log("❌ 丟失目標：暫停");
+            scanGuide.style.display = "block";
+            video.pause();
+        });
+
+        // 預留一個全螢幕點擊保險
+        window.addEventListener("click", () => {
+            if (uiOverlay.style.display === "none" && video.paused && !video.ended) {
+                // 只有在掃描到且影片沒在動時才嘗試播放
+            }
         });
     </script>
 </body>
